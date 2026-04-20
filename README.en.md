@@ -1,6 +1,6 @@
-# Jiapu Offline Family Tree Web App
+# KinCanvas Family Tree
 
-An offline-first family tree web application. Data is stored in a local folder selected by the user, making it suitable for long-term family record maintenance.
+KinCanvas is an offline-first web app for managing family trees visually, with member/relationship editing, full-tree high-quality export, and version rollback.
 
 ## Table of Contents
 
