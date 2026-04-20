@@ -1,0 +1,6 @@
+# Runtime data (local private tree data)
+data/
+
+# Exported family tree images
+家谱_*.svg
+家谱_*_超清.png

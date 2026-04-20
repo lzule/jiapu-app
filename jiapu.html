@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>家谱</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<div id="toolbar">
+  <span class="title">家谱</span>
+  <button class="tb-btn" id="btn-toggle-sidebar" title="切换侧边栏 (Ctrl+B)">☰</button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" id="btn-layout-td" title="上下布局">⬇ 纵向</button>
+  <button class="tb-btn" id="btn-layout-lr" title="左右布局">➡ 横向</button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" id="btn-zoom-in">＋</button>
+  <button class="tb-btn" id="btn-zoom-out">－</button>
+  <button class="tb-btn" id="btn-zoom-fit">适应</button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" id="btn-undo" title="撤销">↩ 撤销</button>
+  <button class="tb-btn" id="btn-redo" title="前进">↪ 前进</button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" id="btn-save" title="保存版本 (Ctrl+S)">💾 保存</button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" id="btn-search" title="搜索 (Ctrl+F)">🔍 搜索</button>
+  <button class="tb-btn" id="btn-shortcuts" title="快捷键设置 (Ctrl+/)">⌨ 快捷键</button>
+  <button class="tb-btn" id="btn-settings" title="设置">⚙ 设置</button>
+  <div class="tb-sep"></div>
+  <div id="fs-status" class="fs-status" title="本地存储状态">
+    <span id="fs-status-indicator" class="fs-indicator disconnected"></span>
+    <span id="fs-status-text">未连接</span>
+    <span id="fs-folder-name" class="fs-folder-name" style="display:none"></span>
+    <button class="tb-btn fs-action-btn" id="btn-connect-folder" title="连接本地文件夹">📁 连接</button>
+    <button class="tb-btn fs-action-btn" id="btn-disconnect-folder" title="断开连接" style="display:none">断开</button>
+  </div>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" id="btn-export-json" title="将当前家谱数据导出为JSON文件（用于备份或分享给他人）">导出JSON</button>
+  <button class="tb-btn" id="btn-export-png" title="将当前家谱导出为PNG图片">导出图片</button>
+  <button class="tb-btn" id="btn-import" title="从JSON文件导入家谱数据（将覆盖当前数据，导入后可撤销）">导入JSON</button>
+  <input type="file" id="import-file" accept=".json" style="display:none">
+  <div class="spacer"></div>
+  <button class="tb-btn danger" id="btn-clear" title="清空数据">🗑 清空</button>
+</div>
+
+<div id="main">
+  <div id="sidebar">
+    <div id="sidebar-tabs">
+      <div class="stab active" data-tab="generations">世代</div>
+      <div class="stab" data-tab="stats">统计</div>
+      <div class="stab" data-tab="history">历史</div>
+    </div>
+    <div id="sidebar-content">
+      <div id="tab-generations"></div>
+      <div id="tab-stats" style="display:none"></div>
+      <div id="tab-history" style="display:none">
+        <div class="hist-collapsible" data-section="history">
+          <div class="hist-collapsible-header" data-toggle="history">
+            <span>操作历史</span>
+            <span class="hist-collapse-icon">▼</span>
+          </div>
+          <div class="hist-collapsible-content" id="history-content"></div>
+        </div>
+        <div class="hist-collapsible" data-section="versions">
+          <div class="hist-collapsible-header" data-toggle="versions">
+            <span>已保存版本</span>
+            <span class="hist-collapse-icon">▼</span>
+          </div>
+          <div class="hist-collapsible-content" id="versions-content"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="canvas-wrap">
+    <svg id="svg-canvas" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#888888"/>
+        </marker>
+      </defs>
+      <g id="svg-root">
+        <g id="svg-bands"></g>
+        <g id="svg-edges"></g>
+        <g id="svg-nodes"></g>
+      </g>
+    </svg>
+    <div id="empty-state">
+      <h2>家谱</h2>
+      <p>点击下方按钮添加第一位家族成员</p>
+      <button id="add-root-btn">＋ 添加根节点</button>
+      <p class="hint" style="margin-top:12px">右键节点可添加关系 · 拖拽平移 · 滚轮缩放</p>
+      <p class="hint">Ctrl+Z 撤销 · Ctrl+Y 重做 · Ctrl+S 保存版本 · Ctrl+Shift+N 添加人物</p>
+    </div>
+    <div id="zoom-indicator">100%</div>
+
+    <div id="search-bar">
+      <input type="text" id="search-input" placeholder="搜索姓名、出生地、备注...">
+      <span id="search-count"></span>
+      <button class="search-nav-btn" id="search-prev" title="上一个">▲</button>
+      <button class="search-nav-btn" id="search-next" title="下一个">▼</button>
+      <button id="search-close">×</button>
+    </div>
+  </div>
+</div>
+
+<div id="ctx-menu" tabindex="-1">
+  <div class="ctx-item" data-action="add-spouse" data-shortcut="a">💑 添加配偶 <span class="ctx-shortcut">A</span></div>
+  <div class="ctx-item" data-action="add-child" data-shortcut="s">👶 添加子女 <span class="ctx-shortcut">S</span></div>
+  <div class="ctx-item" data-action="add-parent" data-shortcut="d">👴 添加父母 <span class="ctx-shortcut">D</span></div>
+  <div class="ctx-item" data-action="add-sibling" data-shortcut="f">👫 添加兄弟姐妹 <span class="ctx-shortcut">F</span></div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" data-action="edit" data-shortcut="e">✏️ 编辑信息 <span class="ctx-shortcut">E</span></div>
+  <div class="ctx-item danger" data-action="delete" data-shortcut="x">🗑 删除此人 <span class="ctx-shortcut">X</span></div>
+</div>
+
+<div id="relation-menu" tabindex="-1">
+  <div class="ctx-item" data-relation="spouse" data-shortcut="a">💑 设为配偶 <span class="ctx-shortcut">A</span></div>
+  <div class="ctx-item" data-relation="parent" data-shortcut="d">👴 设为父亲/母亲 <span class="ctx-shortcut">D</span></div>
+  <div class="ctx-item" data-relation="child" data-shortcut="s">👶 设为子女 <span class="ctx-shortcut">S</span></div>
+  <div class="ctx-item" data-relation="sibling" data-shortcut="f">👫 设为兄弟姐妹 <span class="ctx-shortcut">F</span></div>
+</div>
+
+<div id="modal-overlay">
+  <div id="modal">
+    <div class="modal-header">
+      <h3 id="modal-title">编辑人物信息</h3>
+      <button class="modal-close" id="modal-close-btn">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <label>姓名 *</label>
+        <input type="text" id="f-name" placeholder="请输入姓名">
+      </div>
+      <div class="form-row">
+        <label>性别</label>
+        <div class="radio-group">
+          <label><input type="radio" name="gender" value="male"> 男</label>
+          <label><input type="radio" name="gender" value="female"> 女</label>
+          <label><input type="radio" name="gender" value="unknown" checked> 未知</label>
+        </div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-row">
+          <label>出生日期</label>
+          <input type="text" id="f-birth" placeholder="如: 1950-03-15 或 1950年代">
+        </div>
+        <div class="form-row">
+          <label>去世日期</label>
+          <input type="text" id="f-death" placeholder="在世则留空">
+        </div>
+      </div>
+      <div class="form-row">
+        <label>出生地</label>
+        <input type="text" id="f-birthplace" placeholder="省/市/县">
+      </div>
+      <div class="form-row">
+        <label>备注</label>
+        <textarea id="f-notes" placeholder="其他信息..."></textarea>
+      </div>
+      <div class="form-row">
+        <label>照片</label>
+        <div style="display:flex;align-items:center;gap:10px">
+          <img id="photo-preview" class="photo-preview" src="" alt="照片">
+          <input type="file" id="f-photo" accept="image/*" style="font-size:13px">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger" id="modal-delete-btn" style="margin-right:auto;display:none">删除</button>
+      <button class="btn btn-secondary" id="modal-cancel-btn">取消</button>
+      <button class="btn btn-primary" id="modal-save-btn">保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="edge-popover">
+  <h4>连线操作</h4>
+  <input type="text" id="edge-note-input" placeholder="添加备注...">
+  <div class="edge-popover-btns">
+    <button class="btn btn-danger" id="edge-delete-btn">删除关系</button>
+    <button class="btn btn-secondary" id="edge-cancel-btn">取消</button>
+    <button class="btn btn-primary" id="edge-save-btn">保存</button>
+  </div>
+</div>
+
+<div id="save-popover">
+  <h4>保存版本</h4>
+  <input type="text" id="save-label-input" placeholder="版本名称...">
+  <div class="save-popover-btns">
+    <button class="btn btn-secondary" id="save-cancel-btn">取消</button>
+    <button class="btn btn-primary" id="save-confirm-btn">保存</button>
+  </div>
+</div>
+
+<div id="shortcuts-overlay">
+  <div id="shortcuts-modal">
+    <div class="modal-header">
+      <h3>快捷键设置</h3>
+      <button class="modal-close" onclick="App.closeShortcutsModal()">×</button>
+    </div>
+    <div id="shortcuts-list"></div>
+  </div>
+</div>
+
+<div id="settings-overlay">
+  <div id="settings-modal">
+    <div class="modal-header">
+      <h3>设置</h3>
+      <button class="modal-close" id="settings-close-btn">×</button>
+    </div>
+    <div class="settings-body">
+      <div class="settings-section">
+        <h4>自动保存</h4>
+        <div class="settings-row">
+          <label>自动保存间隔（秒）</label>
+          <input type="number" id="autosave-interval" min="10" max="600" value="60">
+        </div>
+        <p class="settings-hint">设置范围：10-600秒，默认60秒</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="settings-cancel-btn">取消</button>
+      <button class="btn btn-primary" id="settings-save-btn">保存设置</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- 欢迎弹窗 -->
+<div id="welcome-overlay">
+  <div id="welcome-modal">
+    <div class="welcome-icon">家</div>
+    <h2>家谱</h2>
+    <p class="welcome-subtitle">连接本地文件夹，安全保存您的家族历史</p>
+    <div class="welcome-features">
+      <div class="welcome-feature">
+        <span class="welcome-feature-icon">💾</span>
+        <span>数据本地保存，完全私密</span>
+      </div>
+      <div class="welcome-feature">
+        <span class="welcome-feature-icon">🔄</span>
+        <span>自动同步，支持版本管理</span>
+      </div>
+      <div class="welcome-feature">
+        <span class="welcome-feature-icon">↩</span>
+        <span>完整的操作历史与撤销</span>
+      </div>
+    </div>
+    <button class="btn btn-primary welcome-connect-btn" id="welcome-connect-btn">
+      📁 选择存储文件夹
+    </button>
+    <p class="welcome-hint-text">请选择 <strong>jiapu_app</strong> 文件夹（即本网页所在目录）</p>
+    <button class="welcome-skip-btn" id="welcome-skip-btn">暂不连接，仅查看</button>
+  </div>
+</div>
+
+<!-- 浏览器不支持提示 -->
+<div id="unsupported-overlay" style="display:none">
+  <div id="unsupported-modal">
+    <h2>浏览器不支持</h2>
+    <p class="welcome-desc">当前浏览器不支持本地文件存储</p>
+    <p class="welcome-hint">请使用 Chrome 或 Edge 浏览器</p>
+  </div>
+</div>
+
+<script src="js/state.js"></script>
+<script src="js/filesystem.js"></script>
+<script src="js/history.js"></script>
+<script src="js/layout.js"></script>
+<script src="js/renderer.js"></script>
+<script src="js/shortcuts.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>
