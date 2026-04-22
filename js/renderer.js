@@ -33,6 +33,21 @@
     return out;
   }
 
+  function buildSpouseMap(state) {
+    var out = {};
+    Object.keys(state.persons || {}).forEach(function(pid) {
+      out[pid] = new Set();
+    });
+    (state.relations || []).forEach(function(rel) {
+      if (rel.type !== 'spouse') return;
+      if (!out[rel.fromId]) out[rel.fromId] = new Set();
+      if (!out[rel.toId]) out[rel.toId] = new Set();
+      out[rel.fromId].add(rel.toId);
+      out[rel.toId].add(rel.fromId);
+    });
+    return out;
+  }
+
   // 计算某个节点的后代集合（不包含自己）
   function collectDescendants(rootId, childrenMap) {
     var key = sortedParentKey(rootId);
@@ -57,14 +72,44 @@
     if (!visible.size || !App.collapsedNodes || !App.collapsedNodes.size) return visible;
 
     var childrenMap = buildChildrenMap(state);
+    var spouseMap = buildSpouseMap(state);
     App.collapsedNodes.forEach(function(nodeId) {
       if (!visible.has(nodeId)) return;
       var descendants = collectDescendants(nodeId, childrenMap);
-      descendants.forEach(function(childId) {
-        visible.delete(childId);
+      var toHide = new Set(descendants);
+      // 折叠闭包：后代 + 后代配偶
+      descendants.forEach(function(did) {
+        (spouseMap[did] || new Set()).forEach(function(spid) {
+          if (spid !== nodeId) toHide.add(spid);
+        });
+      });
+      toHide.forEach(function(hid) {
+        visible.delete(hid);
       });
     });
     return visible;
+  }
+
+  function buildVisibleState(state, visibleIds) {
+    var persons = {};
+    visibleIds.forEach(function(pid) {
+      if (state.persons[pid]) persons[pid] = state.persons[pid];
+    });
+    var relations = (state.relations || []).filter(function(rel) {
+      return visibleIds.has(rel.fromId) && visibleIds.has(rel.toId);
+    });
+    var rootId = state.rootPersonId;
+    if (!rootId || !visibleIds.has(rootId)) {
+      rootId = visibleIds.values().next().value || null;
+    }
+    return {
+      persons: persons,
+      relations: relations,
+      rootPersonId: rootId,
+      layout: state.layout,
+      generationNames: state.generationNames || {},
+      version: state.version || 2
+    };
   }
 
   App.isDescendant = function(ancestorId, targetId, state) {
@@ -96,9 +141,19 @@
   App.expandPathToPerson = function(personId) {
     if (!personId || !App.collapsedNodes.size) return false;
     var changed = false;
+    var childrenMap = buildChildrenMap(App.appState);
+    var spouseMap = buildSpouseMap(App.appState);
     Array.from(App.collapsedNodes).forEach(function(rootId) {
       if (rootId === personId) return;
-      if (App.isDescendant(rootId, personId, App.appState)) {
+      var descendants = collectDescendants(rootId, childrenMap);
+      var shouldExpand = descendants.has(personId);
+      if (!shouldExpand) {
+        descendants.forEach(function(did) {
+          if (shouldExpand) return;
+          if ((spouseMap[did] || new Set()).has(personId)) shouldExpand = true;
+        });
+      }
+      if (shouldExpand) {
         App.collapsedNodes.delete(rootId);
         changed = true;
       }
@@ -458,40 +513,71 @@
       g.appendChild(iconEl);
 
       if (hasChildren) {
-        var controlBg = svgEl('circle', {
-          cx: NW - 12,
-          cy: NH - 12,
-          r: 8,
-          fill: isCollapsed ? '#4b5563' : '#ffffff',
-          stroke: '#4b5563',
-          'stroke-width': 1.3,
+        var cx = NW - 13;
+        var cy = NH - 13;
+        var controlHit = svgEl('circle', {
+          cx: cx,
+          cy: cy,
+          r: 14,
+          fill: 'transparent',
           cursor: 'pointer',
           'data-node-control': '1'
         });
-        var controlText = svgEl('text', {
-          x: NW - 12,
-          y: NH - 9,
-          'font-size': 12,
-          'font-weight': '700',
-          fill: isCollapsed ? '#ffffff' : '#4b5563',
-          'text-anchor': 'middle',
+        var controlBg = svgEl('circle', {
+          cx: cx,
+          cy: cy,
+          r: 11,
+          fill: isCollapsed ? '#4f5f75' : '#ffffff',
+          stroke: isCollapsed ? '#4f5f75' : '#5b6878',
+          'stroke-width': 1.8,
+          cursor: 'pointer',
+          'data-node-control': '1'
+        });
+        var minusLine = svgEl('line', {
+          x1: cx - 4.2,
+          y1: cy,
+          x2: cx + 4.2,
+          y2: cy,
+          stroke: isCollapsed ? '#ffffff' : '#4f5f75',
+          'stroke-width': 1.9,
+          'stroke-linecap': 'round',
           'pointer-events': 'none',
           'data-node-control': '1'
         });
-        controlText.textContent = isCollapsed ? '+' : '–';
+        g.appendChild(controlBg);
+        g.appendChild(minusLine);
+        if (isCollapsed) {
+          var plusLine = svgEl('line', {
+            x1: cx,
+            y1: cy - 4.2,
+            x2: cx,
+            y2: cy + 4.2,
+            stroke: '#ffffff',
+            'stroke-width': 1.9,
+            'stroke-linecap': 'round',
+            'pointer-events': 'none',
+            'data-node-control': '1'
+          });
+          g.appendChild(plusLine);
+        }
 
-        controlBg.addEventListener('click', function(e) {
+        function onToggleCollapse(e) {
           e.preventDefault();
           e.stopPropagation();
           App.toggleCollapseNode(person.id);
+        }
+
+        controlHit.addEventListener('click', onToggleCollapse);
+        controlBg.addEventListener('click', onToggleCollapse);
+        controlHit.addEventListener('mousedown', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
         });
         controlBg.addEventListener('mousedown', function(e) {
           e.preventDefault();
           e.stopPropagation();
         });
-
-        g.appendChild(controlBg);
-        g.appendChild(controlText);
+        g.appendChild(controlHit);
       }
 
       // 姓名
@@ -576,9 +662,10 @@
       if (!state.persons[pid]) App.collapsedNodes.delete(pid);
     });
 
-    App.cachedGenMap = App.computeGenerations(state);
-    App.cachedPositions = App.computeLayout(state);
     App.visiblePersonIds = computeVisiblePersonIds(state);
+    var visibleState = buildVisibleState(state, App.visiblePersonIds);
+    App.cachedGenMap = App.computeGenerations(visibleState);
+    App.cachedPositions = App.computeLayout(visibleState);
     App.cachedVisiblePositions = {};
     App.visiblePersonIds.forEach(function(pid) {
       if (App.cachedPositions[pid]) App.cachedVisiblePositions[pid] = App.cachedPositions[pid];
@@ -594,7 +681,7 @@
 
     var isLR = state.layout === 'left-right';
     renderBands(visibleGenMap, App.cachedVisiblePositions, isLR);
-    renderEdges(state, App.cachedPositions, App.visiblePersonIds);
+    renderEdges(visibleState, App.cachedPositions, App.visiblePersonIds);
     renderNodes(state, App.cachedPositions, App.visiblePersonIds);
     App.applyViewport();
     App.updateSidebar();

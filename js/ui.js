@@ -48,6 +48,12 @@
     document.getElementById('ctx-menu').style.display = 'none'; ctxPersonId = null;
   };
 
+  App.closeToolbarMoreMenu = function() {
+    var wrap = document.getElementById('toolbar-more-wrap');
+    if (!wrap) return;
+    wrap.classList.remove('open');
+  };
+
   function updatePhotoRemoveBtn() {
     var removeBtn = document.getElementById('f-photo-remove');
     var preview = document.getElementById('photo-preview');
@@ -893,6 +899,8 @@
   }
 
   function initToolbar() {
+    var moreWrap = document.getElementById('toolbar-more-wrap');
+    var moreBtn = document.getElementById('btn-more');
     document.getElementById('btn-layout-td').addEventListener('click', function(){
       if (App.appState.layout==='top-down') return;
       App.history.execute(App.mutations.setLayout('top-down'),'切换纵向布局');
@@ -933,6 +941,22 @@
     document.getElementById('btn-shortcuts').addEventListener('click',function(){App.openShortcutsModal();});
     document.getElementById('btn-toggle-sidebar').addEventListener('click',function(){App.toggleSidebar();});
     document.getElementById('add-root-btn').addEventListener('click',function(){App.openPersonModal(null);});
+    if (moreBtn && moreWrap) {
+      moreBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        moreWrap.classList.toggle('open');
+      });
+      document.addEventListener('click', function(e) {
+        if (!e.target.closest('#toolbar-more-wrap')) App.closeToolbarMoreMenu();
+      });
+      // 点击菜单内操作后自动收起，减少遮挡
+      moreWrap.querySelectorAll('.toolbar-menu-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          App.closeToolbarMoreMenu();
+        });
+      });
+    }
     document.getElementById('btn-layout-td').classList.toggle('active',App.appState.layout!=='left-right');
     document.getElementById('btn-layout-lr').classList.toggle('active',App.appState.layout==='left-right');
   }

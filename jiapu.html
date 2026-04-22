@@ -26,23 +26,27 @@
   <button class="tb-btn" id="btn-save" title="保存版本 (Ctrl+S)">💾 保存</button>
   <div class="tb-sep"></div>
   <button class="tb-btn" id="btn-search" title="搜索 (Ctrl+F)">🔍 搜索</button>
-  <button class="tb-btn" id="btn-shortcuts" title="快捷键设置 (Ctrl+/)">⌨ 快捷键</button>
-  <button class="tb-btn" id="btn-settings" title="设置">⚙ 设置</button>
-  <div class="tb-sep"></div>
-  <div id="fs-status" class="fs-status" title="本地存储状态">
-    <span id="fs-status-indicator" class="fs-indicator disconnected"></span>
-    <span id="fs-status-text">未连接</span>
-    <span id="fs-folder-name" class="fs-folder-name" style="display:none"></span>
-    <button class="tb-btn fs-action-btn" id="btn-connect-folder" title="连接本地文件夹">📁 连接</button>
-    <button class="tb-btn fs-action-btn" id="btn-disconnect-folder" title="断开连接" style="display:none">断开</button>
-  </div>
   <div class="tb-sep"></div>
   <button class="tb-btn" id="btn-export-json" title="将当前家谱数据导出为JSON文件（用于备份或分享给他人）">导出JSON</button>
-  <button class="tb-btn" id="btn-export-png" title="将当前家谱导出为PNG图片">导出图片</button>
+  <button class="tb-btn" id="btn-export-png" title="将当前家谱导出为PNG图片">导出图</button>
   <button class="tb-btn" id="btn-import" title="从JSON文件导入家谱数据（将覆盖当前数据，导入后可撤销）">导入JSON</button>
   <input type="file" id="import-file" accept=".json" style="display:none">
-  <div class="spacer"></div>
-  <button class="tb-btn danger" id="btn-clear" title="清空数据">🗑 清空</button>
+
+  <div id="toolbar-more-wrap">
+    <button class="tb-btn" id="btn-more" title="更多功能">⋯ 更多</button>
+    <div id="toolbar-more-menu">
+      <button class="tb-btn toolbar-menu-btn" id="btn-shortcuts" title="快捷键设置 (Ctrl+/)">⌨ 快捷键</button>
+      <button class="tb-btn toolbar-menu-btn" id="btn-settings" title="设置">⚙ 设置</button>
+      <div id="fs-status" class="fs-status toolbar-menu-status" title="本地存储状态">
+        <span id="fs-status-indicator" class="fs-indicator disconnected"></span>
+        <span id="fs-status-text">未连接</span>
+        <span id="fs-folder-name" class="fs-folder-name" style="display:none"></span>
+        <button class="tb-btn fs-action-btn" id="btn-connect-folder" title="连接本地文件夹">📁 连接</button>
+        <button class="tb-btn fs-action-btn" id="btn-disconnect-folder" title="断开连接" style="display:none">断开</button>
+      </div>
+      <button class="tb-btn danger toolbar-menu-btn" id="btn-clear" title="清空数据">🗑 清空</button>
+    </div>
+  </div>
 </div>
 
 <div id="main">

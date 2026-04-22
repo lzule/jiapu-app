@@ -89,13 +89,13 @@ body {
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  padding: 0 16px;
-  gap: 4px;
+  padding: 0 10px;
+  gap: 3px;
   flex-shrink: 0;
   box-shadow: var(--shadow-sm);
   z-index: 100;
   flex-wrap: nowrap;
-  overflow-x: auto;
+  overflow: visible;
 }
 
 #toolbar .title {
@@ -110,20 +110,20 @@ body {
 
 .tb-sep {
   width: 1px;
-  height: 20px;
+  height: 18px;
   background: var(--border);
-  margin: 0 8px;
+  margin: 0 6px;
   flex-shrink: 0;
 }
 
 .tb-btn {
-  padding: 6px 12px;
+  padding: 6px 10px;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: #ffffff;
   cursor: pointer;
   font-family: var(--font-ui);
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary);
   transition: all 0.15s ease;
   white-space: nowrap;
@@ -157,6 +157,40 @@ body {
 #toolbar .spacer {
   flex: 1;
   min-width: 16px;
+}
+
+#toolbar-more-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+#toolbar-more-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: 268px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+  padding: 8px;
+  display: none;
+  z-index: 1200;
+}
+
+#toolbar-more-wrap.open #toolbar-more-menu {
+  display: block;
+}
+
+.toolbar-menu-btn {
+  width: 100%;
+  justify-content: flex-start;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.toolbar-menu-btn:last-child {
+  margin-bottom: 0;
 }
 
 /* ========================================
@@ -1476,6 +1510,32 @@ body.dragging {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.toolbar-menu-status {
+  margin: 4px 0 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+}
+
+.toolbar-menu-status:hover {
+  background: var(--bg-primary);
+}
+
+.toolbar-menu-status .fs-folder-name {
+  grid-column: 1 / -1;
+  max-width: none;
+}
+
+.toolbar-menu-status .fs-action-btn {
+  margin-left: 0;
 }
 
 /* ========================================

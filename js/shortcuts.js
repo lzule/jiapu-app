@@ -231,7 +231,8 @@
       if (matchShortcut(e, 'navUp') || matchShortcut(e, 'navDown') || matchShortcut(e, 'navLeft') || matchShortcut(e, 'navRight')) { e.preventDefault(); App.navigateWithArrow(e); return; }
       if (matchShortcut(e, 'escape')) {
         App.closePersonModal(); App.closeContextMenu(); App.closeEdgePopover(); App.closeSearch();
-        App.closeSavePopover(); App.closeShortcutsModal(); App.closePhotoViewer && App.closePhotoViewer(); App.selectPerson(null);
+        App.closeSavePopover(); App.closeShortcutsModal(); App.closeToolbarMoreMenu && App.closeToolbarMoreMenu();
+        App.closePhotoViewer && App.closePhotoViewer(); App.selectPerson(null);
         return;
       }
     });

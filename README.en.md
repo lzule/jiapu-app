@@ -29,7 +29,9 @@ KinCanvas is an offline-first web app for managing family trees visually, with m
 
 ## UI Preview
 
-![Anonymous UI preview](./docs/images/preview-anonymous.svg)
+![Anonymous UI preview](./docs/images/preview-anonymous.png)
+
+[View SVG source](./docs/images/preview-anonymous.svg)
 
 > This preview uses anonymized demo content only (no private family data).
 
@@ -76,7 +78,7 @@ KinCanvas is an offline-first web app for managing family trees visually, with m
 - Right-click a node: open node actions menu.
 - `Alt + drag` between nodes: create relationship quickly.
 - Drag sibling nodes: reorder siblings.
-- Click the node collapse button: collapse/expand all descendants of that node.
+- Click the bottom-right collapse button on a node: collapse/expand its branch (including descendant spouses).
 - Click **Expand All** in toolbar: restore full tree visibility.
 - Click a node photo: open full-screen preview (`Ctrl + mouse` quick zoom also works).
 

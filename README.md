@@ -7,7 +7,9 @@ EN: Offline visual family tree editor with drag-and-link relationships, subtree 
 
 ## 界面预览 / UI Preview
 
-![匿名示例界面预览](./docs/images/preview-anonymous.svg)
+![匿名示例界面预览](./docs/images/preview-anonymous.png)
+
+[查看 SVG 原图](./docs/images/preview-anonymous.svg)
 
 ## 最近更新 / Recent Updates
 
