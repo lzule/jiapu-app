@@ -16,6 +16,8 @@
     navDown:       { key: 'ArrowDown',  ctrl: false, shift: false, alt: false, label: '导航下' },
     navLeft:       { key: 'ArrowLeft',  ctrl: false, shift: false, alt: false, label: '导航左' },
     navRight:      { key: 'ArrowRight', ctrl: false, shift: false, alt: false, label: '导航右' },
+    reorderSiblingLeft:  { key: 'ArrowLeft',  ctrl: true, shift: true,  alt: false, label: '同辈左移一位' },
+    reorderSiblingRight: { key: 'ArrowRight', ctrl: true, shift: true,  alt: false, label: '同辈右移一位' },
     escape:        { key: 'Escape',     ctrl: false, shift: false, alt: false, label: '取消/关闭' },
     // 右键菜单快捷键
     menuAddSpouse:    { key: 'a', ctrl: false, shift: false, alt: false, label: '菜单-添加配偶' },
@@ -210,10 +212,26 @@
       if (matchShortcut(e, 'zoomOut')) { e.preventDefault(); App.vp.scale = Math.max(0.1, App.vp.scale / 1.2); App.applyViewport(); return; }
       if (matchShortcut(e, 'shortcutsHelp')) { e.preventDefault(); App.openShortcutsModal(); return; }
       if (matchShortcut(e, 'toggleSidebar')) { e.preventDefault(); App.toggleSidebar(); return; }
+      if (matchShortcut(e, 'reorderSiblingLeft')) {
+        e.preventDefault();
+        if (App.moveSiblingByStep) {
+          var leftResult = App.moveSiblingByStep(App.selectedPersonId, -1);
+          if (leftResult && leftResult.message) App.showToast(leftResult.message);
+        }
+        return;
+      }
+      if (matchShortcut(e, 'reorderSiblingRight')) {
+        e.preventDefault();
+        if (App.moveSiblingByStep) {
+          var rightResult = App.moveSiblingByStep(App.selectedPersonId, 1);
+          if (rightResult && rightResult.message) App.showToast(rightResult.message);
+        }
+        return;
+      }
       if (matchShortcut(e, 'navUp') || matchShortcut(e, 'navDown') || matchShortcut(e, 'navLeft') || matchShortcut(e, 'navRight')) { e.preventDefault(); App.navigateWithArrow(e); return; }
       if (matchShortcut(e, 'escape')) {
         App.closePersonModal(); App.closeContextMenu(); App.closeEdgePopover(); App.closeSearch();
-        App.closeSavePopover(); App.closeShortcutsModal(); App.selectPerson(null);
+        App.closeSavePopover(); App.closeShortcutsModal(); App.closePhotoViewer && App.closePhotoViewer(); App.selectPerson(null);
         return;
       }
     });

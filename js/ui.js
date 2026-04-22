@@ -48,6 +48,34 @@
     document.getElementById('ctx-menu').style.display = 'none'; ctxPersonId = null;
   };
 
+  function updatePhotoRemoveBtn() {
+    var removeBtn = document.getElementById('f-photo-remove');
+    var preview = document.getElementById('photo-preview');
+    if (!removeBtn || !preview) return;
+    var hasPhoto = preview.style.display !== 'none' && !!preview.src;
+    removeBtn.disabled = !hasPhoto;
+  }
+
+  App.openPhotoViewer = function(photoUrl, personName) {
+    if (!photoUrl) return;
+    var overlay = document.getElementById('photo-viewer-overlay');
+    var img = document.getElementById('photo-viewer-image');
+    if (!overlay || !img) return;
+    img.src = photoUrl;
+    img.alt = (personName || '人物') + ' 大图预览';
+    overlay.classList.add('open');
+    overlay.setAttribute('aria-hidden', 'false');
+  };
+
+  App.closePhotoViewer = function() {
+    var overlay = document.getElementById('photo-viewer-overlay');
+    var img = document.getElementById('photo-viewer-image');
+    if (!overlay || !img) return;
+    overlay.classList.remove('open');
+    overlay.setAttribute('aria-hidden', 'true');
+    img.src = '';
+  };
+
   var modalMode = 'add', modalPersonId = null, pendingRelation = null;
   App.openPersonModal = function(personId, addRelation) {
     modalPersonId = personId; pendingRelation = addRelation || null;
@@ -65,7 +93,7 @@
       document.getElementById('f-notes').value = p.notes||'';
       var preview = document.getElementById('photo-preview');
       if (p.photoUrl){preview.src=p.photoUrl;preview.style.display='block';}
-      else preview.style.display='none';
+      else { preview.src=''; preview.style.display='none'; }
     } else {
       modalMode = 'add';
       title.textContent = addRelation ? ('添加'+relationLabel(addRelation.relationType)) : '添加人物';
@@ -73,6 +101,7 @@
       document.getElementById('f-name').value = '';
       document.querySelector('input[name="gender"][value="unknown"]').checked = true;
       ['f-birth','f-death','f-birthplace','f-notes'].forEach(function(id){document.getElementById(id).value='';});
+      document.getElementById('photo-preview').src = '';
       document.getElementById('photo-preview').style.display = 'none';
       document.getElementById('f-photo').value = '';
       if (addRelation && addRelation.relationType === 'add-spouse') {
@@ -83,6 +112,7 @@
         }
       }
     }
+    updatePhotoRemoveBtn();
     overlay.classList.add('open');
     setTimeout(function(){document.getElementById('f-name').focus();}, 50);
   };
@@ -494,6 +524,7 @@
   }
 
   function focusPerson(id) {
+    if (App.expandPathToPerson) App.expandPathToPerson(id);
     App.selectPerson(id);
     var gen = App.cachedGenMap[id];
     if (gen !== undefined && gen !== selectedGen) {
@@ -638,108 +669,123 @@
   };
 
   App.exportPNG = function() {
-    if (!Object.keys(App.cachedPositions || {}).length) {
-      App.showToast('暂无可导出的家谱内容');
-      return;
+    var collapsedSnapshot = Array.from(App.collapsedNodes || []);
+    var expandedTemporarily = false;
+    if (collapsedSnapshot.length) {
+      App.collapsedNodes.clear();
+      App.renderAll();
+      expandedTemporarily = true;
     }
 
-    var svg = document.getElementById('svg-canvas');
-    if (!svg) {
-      App.showToast('导出失败：画布不可用');
-      return;
+    try {
+      if (!Object.keys(App.cachedPositions || {}).length) {
+        App.showToast('暂无可导出的家谱内容');
+        return;
+      }
+
+      var svg = document.getElementById('svg-canvas');
+      if (!svg) {
+        App.showToast('导出失败：画布不可用');
+        return;
+      }
+
+      var bbox = App.computeBBox ? App.computeBBox(App.cachedPositions) : null;
+      if (!bbox) {
+        App.showToast('导出失败：无法计算范围');
+        return;
+      }
+
+      // 导出整张家谱（非当前视口），默认使用矢量 SVG，避免字体发糊与内容被裁切
+      var padding = 40;
+      var contentW = Math.max(1, bbox.w + padding * 2);
+      var contentH = Math.max(1, bbox.h + padding * 2);
+      var viewMinX = bbox.minX - padding;
+      var viewMinY = bbox.minY - padding;
+
+      var clone = svg.cloneNode(true);
+      clone.setAttribute('width', String(contentW));
+      clone.setAttribute('height', String(contentH));
+      clone.setAttribute('viewBox', viewMinX + ' ' + viewMinY + ' ' + contentW + ' ' + contentH);
+      clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+      clone.style.background = '#f8fafc';
+
+      // 清除当前视口缩放和平移，确保导出的是完整族谱而非屏幕视图
+      var rootGroup = clone.querySelector('#svg-root');
+      if (rootGroup) rootGroup.setAttribute('transform', '');
+
+      var defs = clone.querySelector('defs');
+      if (!defs) {
+        defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+        clone.insertBefore(defs, clone.firstChild);
+      }
+      var styleEl = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+      styleEl.textContent = 'text{ text-rendering: geometricPrecision; -webkit-font-smoothing: antialiased; }';
+      defs.appendChild(styleEl);
+
+      function triggerDownload(url, fileName) {
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        a.click();
+      }
+
+      var dateTag = new Date().toISOString().slice(0, 10);
+      var serializer = new XMLSerializer();
+      var svgStr = serializer.serializeToString(clone);
+      var svgBlob = new Blob(['<?xml version="1.0" encoding="UTF-8"?>\n' + svgStr], { type: 'image/svg+xml;charset=utf-8' });
+      var svgUrl = URL.createObjectURL(svgBlob);
+      triggerDownload(svgUrl, '家谱_' + dateTag + '.svg');
+      setTimeout(function() { URL.revokeObjectURL(svgUrl); }, 0);
+
+      // 额外导出一份超清 PNG，方便在不支持 SVG 的场景直接使用
+      var exportScale = Math.max(4, Math.ceil((window.devicePixelRatio || 1) * 3));
+      var maxSide = 30000;
+      if (contentW * exportScale > maxSide || contentH * exportScale > maxSide) {
+        exportScale = Math.floor(Math.min(maxSide / contentW, maxSide / contentH));
+      }
+      exportScale = Math.max(2, exportScale);
+
+      var maxPixels = 120 * 1000 * 1000;
+      var totalPixels = contentW * exportScale * contentH * exportScale;
+      if (totalPixels > maxPixels) {
+        exportScale = Math.max(2, Math.floor(Math.sqrt(maxPixels / (contentW * contentH))));
+      }
+
+      var canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.floor(contentW * exportScale));
+      canvas.height = Math.max(1, Math.floor(contentH * exportScale));
+      var ctx = canvas.getContext('2d');
+      if (!ctx) {
+        App.showToast('已导出 SVG，PNG 导出失败（画布不可用）');
+        return;
+      }
+      ctx.setTransform(exportScale, 0, 0, exportScale, 0, 0);
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(0, 0, contentW, contentH);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+
+      var pngUrl = URL.createObjectURL(svgBlob);
+      var img = new Image();
+      img.onload = function() {
+        ctx.drawImage(img, 0, 0, contentW, contentH);
+        URL.revokeObjectURL(pngUrl);
+        var outPngUrl = canvas.toDataURL('image/png');
+        triggerDownload(outPngUrl, '家谱_' + dateTag + '_超清.png');
+        App.showToast('已导出 SVG + 超清 PNG');
+      };
+      img.onerror = function() {
+        URL.revokeObjectURL(pngUrl);
+        App.showToast('已导出 SVG，PNG 导出失败');
+      };
+      img.src = pngUrl;
+    } finally {
+      if (expandedTemporarily) {
+        App.collapsedNodes = new Set(collapsedSnapshot);
+        App.renderAll();
+      }
     }
-
-    var bbox = App.computeBBox ? App.computeBBox(App.cachedPositions) : null;
-    if (!bbox) {
-      App.showToast('导出失败：无法计算范围');
-      return;
-    }
-
-    // 导出整张家谱（非当前视口），默认使用矢量 SVG，避免字体发糊与内容被裁切
-    var padding = 40;
-    var contentW = Math.max(1, bbox.w + padding * 2);
-    var contentH = Math.max(1, bbox.h + padding * 2);
-    var viewMinX = bbox.minX - padding;
-    var viewMinY = bbox.minY - padding;
-
-    var clone = svg.cloneNode(true);
-    clone.setAttribute('width', String(contentW));
-    clone.setAttribute('height', String(contentH));
-    clone.setAttribute('viewBox', viewMinX + ' ' + viewMinY + ' ' + contentW + ' ' + contentH);
-    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-    clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
-    clone.style.background = '#f8fafc';
-
-    // 清除当前视口缩放和平移，确保导出的是完整族谱而非屏幕视图
-    var rootGroup = clone.querySelector('#svg-root');
-    if (rootGroup) rootGroup.setAttribute('transform', '');
-
-    var defs = clone.querySelector('defs');
-    if (!defs) {
-      defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-      clone.insertBefore(defs, clone.firstChild);
-    }
-    var styleEl = document.createElementNS('http://www.w3.org/2000/svg', 'style');
-    styleEl.textContent = 'text{ text-rendering: geometricPrecision; -webkit-font-smoothing: antialiased; }';
-    defs.appendChild(styleEl);
-
-    function triggerDownload(url, fileName) {
-      var a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      a.click();
-    }
-
-    var dateTag = new Date().toISOString().slice(0, 10);
-    var serializer = new XMLSerializer();
-    var svgStr = serializer.serializeToString(clone);
-    var svgBlob = new Blob(['<?xml version="1.0" encoding="UTF-8"?>\n' + svgStr], { type: 'image/svg+xml;charset=utf-8' });
-    var svgUrl = URL.createObjectURL(svgBlob);
-    triggerDownload(svgUrl, '家谱_' + dateTag + '.svg');
-    setTimeout(function() { URL.revokeObjectURL(svgUrl); }, 0);
-
-    // 额外导出一份超清 PNG，方便在不支持 SVG 的场景直接使用
-    var exportScale = Math.max(4, Math.ceil((window.devicePixelRatio || 1) * 3));
-    var maxSide = 30000;
-    if (contentW * exportScale > maxSide || contentH * exportScale > maxSide) {
-      exportScale = Math.floor(Math.min(maxSide / contentW, maxSide / contentH));
-    }
-    exportScale = Math.max(2, exportScale);
-
-    var maxPixels = 120 * 1000 * 1000;
-    var totalPixels = contentW * exportScale * contentH * exportScale;
-    if (totalPixels > maxPixels) {
-      exportScale = Math.max(2, Math.floor(Math.sqrt(maxPixels / (contentW * contentH))));
-    }
-
-    var canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.floor(contentW * exportScale));
-    canvas.height = Math.max(1, Math.floor(contentH * exportScale));
-    var ctx = canvas.getContext('2d');
-    if (!ctx) {
-      App.showToast('已导出 SVG，PNG 导出失败（画布不可用）');
-      return;
-    }
-    ctx.setTransform(exportScale, 0, 0, exportScale, 0, 0);
-    ctx.fillStyle = '#f8fafc';
-    ctx.fillRect(0, 0, contentW, contentH);
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-
-    var pngUrl = URL.createObjectURL(svgBlob);
-    var img = new Image();
-    img.onload = function() {
-      ctx.drawImage(img, 0, 0, contentW, contentH);
-      URL.revokeObjectURL(pngUrl);
-      var outPngUrl = canvas.toDataURL('image/png');
-      triggerDownload(outPngUrl, '家谱_' + dateTag + '_超清.png');
-      App.showToast('已导出 SVG + 超清 PNG');
-    };
-    img.onerror = function() {
-      URL.revokeObjectURL(pngUrl);
-      App.showToast('已导出 SVG，PNG 导出失败');
-    };
-    img.src = pngUrl;
   };
 
   App.importJSON = function(file) {
@@ -829,6 +875,7 @@
       searchResults.forEach(function(id){App.searchHighlightIds.add(id);});
       searchIndex = 0;
       App.searchCurrentId = searchResults[0];
+      if (App.expandPathToPerson) App.expandPathToPerson(searchResults[0]);
       focusPerson(searchResults[0]);
     }
     document.getElementById('search-count').textContent = searchResults.length ? (searchIndex+1)+'/'+searchResults.length : '0';
@@ -839,6 +886,7 @@
     if (!searchResults.length) return;
     searchIndex = (searchIndex + dir + searchResults.length) % searchResults.length;
     App.searchCurrentId = searchResults[searchIndex];
+    if (App.expandPathToPerson) App.expandPathToPerson(searchResults[searchIndex]);
     focusPerson(searchResults[searchIndex]);
     document.getElementById('search-count').textContent = (searchIndex+1)+'/'+searchResults.length;
     App.renderAll();
@@ -862,6 +910,11 @@
     document.getElementById('btn-zoom-in').addEventListener('click',function(){App.vp.scale=Math.min(4,App.vp.scale*1.2);App.applyViewport();});
     document.getElementById('btn-zoom-out').addEventListener('click',function(){App.vp.scale=Math.max(0.1,App.vp.scale/1.2);App.applyViewport();});
     document.getElementById('btn-zoom-fit').addEventListener('click',function(){App.fitToScreen();});
+    document.getElementById('btn-expand-all').addEventListener('click',function(){
+      if (!App.expandAllNodes || !App.expandAllNodes()) {
+        App.showToast('当前没有折叠分支');
+      }
+    });
     document.getElementById('btn-undo').addEventListener('click',function(){App.history.undo();});
     document.getElementById('btn-redo').addEventListener('click',function(){App.history.redo();});
     document.getElementById('btn-save').addEventListener('click',function(){App.openSavePopover();});
@@ -1006,8 +1059,20 @@
       reader.onload = function(ev){
         var preview = document.getElementById('photo-preview');
         preview.src=ev.target.result; preview.style.display='block';
+        updatePhotoRemoveBtn();
       };
       reader.readAsDataURL(file);
+    });
+    document.getElementById('f-photo-remove').addEventListener('click', function() {
+      var preview = document.getElementById('photo-preview');
+      preview.src = '';
+      preview.style.display = 'none';
+      document.getElementById('f-photo').value = '';
+      updatePhotoRemoveBtn();
+    });
+    document.getElementById('photo-preview').addEventListener('click', function(e) {
+      if (!e.currentTarget.src) return;
+      App.openPhotoViewer(e.currentTarget.src, document.getElementById('f-name').value || '人物');
     });
     document.getElementById('f-name').addEventListener('keydown',function(e){
       if (e.key==='Enter') savePersonModal();
@@ -1086,6 +1151,19 @@
   function initShortcutsModal() {
     document.getElementById('shortcuts-overlay').addEventListener('click',function(e){
       if (e.target===document.getElementById('shortcuts-overlay')) App.closeShortcutsModal();
+    });
+  }
+
+  function initPhotoViewer() {
+    var overlay = document.getElementById('photo-viewer-overlay');
+    var closeBtn = document.getElementById('photo-viewer-close');
+    if (!overlay || !closeBtn) return;
+
+    closeBtn.addEventListener('click', function() {
+      App.closePhotoViewer();
+    });
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) App.closePhotoViewer();
     });
   }
 
@@ -1336,6 +1414,7 @@
       initSidebarTabs();
       initSearch();
       initShortcutsModal();
+      initPhotoViewer();
       initSettingsModal();
       initFileSystemUI();
       App.initKeyboard();
@@ -1367,6 +1446,7 @@
       initSidebarTabs();
       initSearch();
       initShortcutsModal();
+      initPhotoViewer();
       initSettingsModal();
       initFileSystemUI();
       App.initKeyboard();

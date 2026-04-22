@@ -1,15 +1,111 @@
 (function(App) {
   App.vp = { x: 0, y: 0, scale: 1 };
   App.cachedPositions = {};
+  App.cachedVisiblePositions = {};
   App.cachedGenMap = {};
   App.selectedPersonId = null;
   App.searchHighlightIds = new Set();
   App.searchCurrentId = null;
+  App.collapsedNodes = new Set();
+  App.visiblePersonIds = new Set();
 
   var isPanning = false, panStart = {x:0,y:0}, vpStart = {x:0,y:0};
 
   // Drag state for sibling reordering
   var dragState = null;
+  var descendantMemo = {};
+
+  function clearDescendantMemo() {
+    descendantMemo = {};
+  }
+
+  function sortedParentKey(parentId) {
+    return parentId || '';
+  }
+
+  function buildChildrenMap(state) {
+    var out = {};
+    (state.relations || []).forEach(function(rel) {
+      if (rel.type !== 'parent-child') return;
+      if (!out[rel.fromId]) out[rel.fromId] = [];
+      out[rel.fromId].push(rel.toId);
+    });
+    return out;
+  }
+
+  // 计算某个节点的后代集合（不包含自己）
+  function collectDescendants(rootId, childrenMap) {
+    var key = sortedParentKey(rootId);
+    if (descendantMemo[key]) return new Set(descendantMemo[key]);
+
+    var visited = new Set();
+    var stack = (childrenMap[rootId] || []).slice();
+    while (stack.length) {
+      var cur = stack.pop();
+      if (visited.has(cur)) continue;
+      visited.add(cur);
+      (childrenMap[cur] || []).forEach(function(nextId) {
+        if (!visited.has(nextId)) stack.push(nextId);
+      });
+    }
+    descendantMemo[key] = Array.from(visited);
+    return new Set(visited);
+  }
+
+  function computeVisiblePersonIds(state) {
+    var visible = new Set(Object.keys(state.persons || {}));
+    if (!visible.size || !App.collapsedNodes || !App.collapsedNodes.size) return visible;
+
+    var childrenMap = buildChildrenMap(state);
+    App.collapsedNodes.forEach(function(nodeId) {
+      if (!visible.has(nodeId)) return;
+      var descendants = collectDescendants(nodeId, childrenMap);
+      descendants.forEach(function(childId) {
+        visible.delete(childId);
+      });
+    });
+    return visible;
+  }
+
+  App.isDescendant = function(ancestorId, targetId, state) {
+    state = state || App.appState;
+    if (!ancestorId || !targetId || ancestorId === targetId) return false;
+    var descendants = collectDescendants(ancestorId, buildChildrenMap(state));
+    return descendants.has(targetId);
+  };
+
+  App.toggleCollapseNode = function(personId) {
+    if (!personId) return;
+    var hasChildren = App.getChildren(personId, App.appState).length > 0;
+    if (!hasChildren) return;
+
+    if (App.collapsedNodes.has(personId)) App.collapsedNodes.delete(personId);
+    else App.collapsedNodes.add(personId);
+    App.renderAll();
+  };
+
+  App.expandAllNodes = function(silent) {
+    if (!App.collapsedNodes.size) return false;
+    App.collapsedNodes.clear();
+    App.renderAll();
+    if (!silent) App.showToast('已展开全部分支');
+    return true;
+  };
+
+  // 搜索/定位命中时，自动展开路径，避免节点在折叠分支中不可见
+  App.expandPathToPerson = function(personId) {
+    if (!personId || !App.collapsedNodes.size) return false;
+    var changed = false;
+    Array.from(App.collapsedNodes).forEach(function(rootId) {
+      if (rootId === personId) return;
+      if (App.isDescendant(rootId, personId, App.appState)) {
+        App.collapsedNodes.delete(rootId);
+        changed = true;
+      }
+    });
+    if (changed) App.renderAll();
+    return changed;
+  };
 
   function svgEl(tag, attrs) {
     var el = document.createElementNS('http://www.w3.org/2000/svg', tag);
@@ -64,11 +160,12 @@
     });
   }
 
-  function renderEdges(state, positions) {
+  function renderEdges(state, positions, visiblePersonIds) {
     var edgesEl = document.getElementById('svg-edges');
     edgesEl.innerHTML = '';
     var isLR = state.layout === 'left-right';
     var NW = App.NODE_W, NH = App.NODE_H;
+    var visible = visiblePersonIds || new Set(Object.keys(state.persons || {}));
 
     function addEdge(pathD, strokeColor, strokeDash, strokeW, relId, notes, hideVisual) {
       if (!pathD) return;
@@ -95,6 +192,7 @@
 
     relations.forEach(function(rel) {
       if (rel.type !== 'parent-child') return;
+      if (!visible.has(rel.fromId) || !visible.has(rel.toId)) return;
       var pairKey = rel.fromId + '|' + rel.toId;
       if (!parentChildByPair[pairKey]) parentChildByPair[pairKey] = [];
       parentChildByPair[pairKey].push(rel);
@@ -128,7 +226,7 @@
 
     // 1) 按父母组渲染亲子线，确保单亲/双亲锚点规则一致
     var childGroups = {};
-    Object.keys(state.persons || {}).forEach(function(childId) {
+    Array.from(visible).forEach(function(childId) {
       var parentIds = idx ? (idx.parentIdsByChild[childId] || []) : [];
       parentIds = parentIds.slice().sort(function(a, b) { return a.localeCompare(b); }).slice(0, 2);
       if (!parentIds.length) return;
@@ -152,7 +250,7 @@
 
       if (!childEntries.length) return;
 
-      var activeParents = parentIds.filter(function(pid) { return !!positions[pid]; });
+      var activeParents = parentIds.filter(function(pid) { return !!positions[pid] && visible.has(pid); });
       if (!activeParents.length) return;
 
       var hasCouple = false;
@@ -277,6 +375,7 @@
     // 2) 配偶关系：有共同子女的由家庭连线表现，其余保留虚线
     relations.forEach(function(rel) {
       if (rel.type !== 'spouse') return;
+      if (!visible.has(rel.fromId) || !visible.has(rel.toId)) return;
       var p1 = positions[rel.fromId];
       var p2 = positions[rel.toId];
       if (!p1 || !p2) return;
@@ -292,6 +391,7 @@
     // 3) 兄弟姐妹关系保持独立虚线
     relations.forEach(function(rel) {
       if (rel.type !== 'sibling') return;
+      if (!visible.has(rel.fromId) || !visible.has(rel.toId)) return;
       var p1 = positions[rel.fromId];
       var p2 = positions[rel.toId];
       if (!p1 || !p2) return;
@@ -306,6 +406,7 @@
     relations.forEach(function(rel) {
       if (rel.type !== 'parent-child') return;
       if (renderedRelIds.has(rel.id)) return;
+      if (!visible.has(rel.fromId) || !visible.has(rel.toId)) return;
       var p1 = positions[rel.fromId];
       var p2 = positions[rel.toId];
       if (!p1 || !p2) return;
@@ -323,12 +424,14 @@
     });
   }
 
-  function renderNodes(state, positions) {
+  function renderNodes(state, positions, visiblePersonIds) {
     var nodesEl = document.getElementById('svg-nodes');
     nodesEl.innerHTML = '';
     var NW = App.NODE_W, NH = App.NODE_H;
+    var visible = visiblePersonIds || new Set(Object.keys(state.persons || {}));
 
     Object.values(state.persons).forEach(function(person) {
+      if (!visible.has(person.id)) return;
       var pos = positions[person.id];
       if (!pos) return;
       var colors = nodeColors(person);
@@ -336,6 +439,8 @@
       var isDeceased = !!person.deathDate;
       var isHighlighted = App.searchHighlightIds.has(person.id);
       var isCurrent = person.id === App.searchCurrentId;
+      var hasChildren = App.getChildren(person.id, state).length > 0;
+      var isCollapsed = App.collapsedNodes.has(person.id);
 
       var g = svgEl('g',{transform:'translate('+(pos.x-NW/2)+','+(pos.y-NH/2)+')',cursor:'pointer','data-person-id':person.id});
       // 柔和的阴影
@@ -351,6 +456,43 @@
       var iconEl = svgEl('text',{x:NW-14,y:15,'font-size':11,fill:colors.stroke,'pointer-events':'none','text-anchor':'middle','font-family':'serif'});
       iconEl.textContent = genderIcon;
       g.appendChild(iconEl);
+
+      if (hasChildren) {
+        var controlBg = svgEl('circle', {
+          cx: NW - 12,
+          cy: NH - 12,
+          r: 8,
+          fill: isCollapsed ? '#4b5563' : '#ffffff',
+          stroke: '#4b5563',
+          'stroke-width': 1.3,
+          cursor: 'pointer',
+          'data-node-control': '1'
+        });
+        var controlText = svgEl('text', {
+          x: NW - 12,
+          y: NH - 9,
+          'font-size': 12,
+          'font-weight': '700',
+          fill: isCollapsed ? '#ffffff' : '#4b5563',
+          'text-anchor': 'middle',
+          'pointer-events': 'none',
+          'data-node-control': '1'
+        });
+        controlText.textContent = isCollapsed ? '+' : '–';
+
+        controlBg.addEventListener('click', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          App.toggleCollapseNode(person.id);
+        });
+        controlBg.addEventListener('mousedown', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+        });
+
+        g.appendChild(controlBg);
+        g.appendChild(controlText);
+      }
 
       // 姓名
       var nameEl = svgEl('text',{x:NW/2,y:28,'font-size':14,'font-weight':'500','font-family':'"Noto Serif SC","SimSun",serif','letter-spacing':'0.05',fill:colors.text,'text-anchor':'middle','pointer-events':'none'});
@@ -372,14 +514,45 @@
         var clip = svgEl('clipPath',{id:clipId});
         clip.appendChild(svgEl('rect',{x:4,y:4,width:30,height:30,rx:4}));
         defs.appendChild(clip); g.appendChild(defs);
-        var imgEl = svgEl('image',{x:4,y:4,width:30,height:30,href:person.photoUrl,'clip-path':'url(#'+clipId+')','pointer-events':'none','preserveAspectRatio':'xMidYMid meet'});
+        var imgEl = svgEl('image',{
+          x:4,
+          y:4,
+          width:30,
+          height:30,
+          href:person.photoUrl,
+          'clip-path':'url(#'+clipId+')',
+          'preserveAspectRatio':'xMidYMid meet',
+          cursor:'zoom-in',
+          'data-node-control': '1'
+        });
+        imgEl.addEventListener('click', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          App.openPhotoViewer(person.photoUrl, person.name);
+        });
+        imgEl.addEventListener('mousedown', function(e) {
+          if (!e.ctrlKey) return;
+          e.preventDefault();
+          e.stopPropagation();
+          App.openPhotoViewer(person.photoUrl, person.name);
+        });
+        imgEl.addEventListener('wheel', function(e) {
+          if (!e.ctrlKey) return;
+          e.preventDefault();
+          e.stopPropagation();
+          App.openPhotoViewer(person.photoUrl, person.name);
+        }, { passive: false });
         g.appendChild(imgEl);
       }
 
       g.addEventListener('click',function(e){e.stopPropagation();App.selectPerson(person.id);});
       g.addEventListener('dblclick',function(e){e.stopPropagation();App.openPersonModal(person.id);});
       g.addEventListener('contextmenu',function(e){e.preventDefault();e.stopPropagation();App.selectPerson(person.id);App.showContextMenu(e.clientX,e.clientY,person.id);});
-      g.addEventListener('mousedown',function(e){if(e.button===0)initNodeDrag(e,person.id);});
+      g.addEventListener('mousedown',function(e){
+        if (e.button !== 0) return;
+        if (e.target && e.target.closest && e.target.closest('[data-node-control]')) return;
+        initNodeDrag(e,person.id);
+      });
       nodesEl.appendChild(g);
     });
   }
@@ -390,15 +563,39 @@
     document.getElementById('empty-state').style.display = hasPersons ? 'none' : 'block';
     if (!hasPersons) {
       ['svg-bands','svg-edges','svg-nodes'].forEach(function(id){document.getElementById(id).innerHTML='';});
+      App.collapsedNodes.clear();
+      App.visiblePersonIds = new Set();
+      App.cachedVisiblePositions = {};
       App.updateSidebar();
       return;
     }
+
+    clearDescendantMemo();
+    // 清理已不存在节点的折叠状态，避免导入/删除后残留脏数据
+    Array.from(App.collapsedNodes).forEach(function(pid) {
+      if (!state.persons[pid]) App.collapsedNodes.delete(pid);
+    });
+
     App.cachedGenMap = App.computeGenerations(state);
     App.cachedPositions = App.computeLayout(state);
+    App.visiblePersonIds = computeVisiblePersonIds(state);
+    App.cachedVisiblePositions = {};
+    App.visiblePersonIds.forEach(function(pid) {
+      if (App.cachedPositions[pid]) App.cachedVisiblePositions[pid] = App.cachedPositions[pid];
+    });
+    if (App.selectedPersonId && !App.visiblePersonIds.has(App.selectedPersonId)) {
+      App.selectedPersonId = null;
+    }
+
+    var visibleGenMap = {};
+    App.visiblePersonIds.forEach(function(pid) {
+      if (App.cachedGenMap[pid] !== undefined) visibleGenMap[pid] = App.cachedGenMap[pid];
+    });
+
     var isLR = state.layout === 'left-right';
-    renderBands(App.cachedGenMap, App.cachedPositions, isLR);
-    renderEdges(state, App.cachedPositions);
-    renderNodes(state, App.cachedPositions);
+    renderBands(visibleGenMap, App.cachedVisiblePositions, isLR);
+    renderEdges(state, App.cachedPositions, App.visiblePersonIds);
+    renderNodes(state, App.cachedPositions, App.visiblePersonIds);
     App.applyViewport();
     App.updateSidebar();
   };
@@ -409,9 +606,12 @@
   };
 
   App.fitToScreen = function() {
-    if (!Object.keys(App.cachedPositions).length) return;
+    var positions = App.cachedVisiblePositions && Object.keys(App.cachedVisiblePositions).length
+      ? App.cachedVisiblePositions
+      : App.cachedPositions;
+    if (!Object.keys(positions || {}).length) return;
     var svg = document.getElementById('svg-canvas');
-    var bbox = App.computeBBox(App.cachedPositions);
+    var bbox = App.computeBBox(positions);
     var svgW = svg.clientWidth||800, svgH = svg.clientHeight||600;
     App.vp.scale = Math.min(svgW/bbox.w, svgH/bbox.h, 1.5)*0.9;
     App.vp.x = svgW/2-(bbox.minX+bbox.w/2)*App.vp.scale;
@@ -420,10 +620,13 @@
   };
 
   App.selectPerson = function(id) {
+    if (id && App.visiblePersonIds && !App.visiblePersonIds.has(id)) {
+      App.expandPathToPerson(id);
+    }
     App.selectedPersonId = id;
     var gen = App.cachedGenMap[id];
     if (gen !== undefined) App.setSelectedGen(gen);
-    if (Object.keys(App.cachedPositions).length) renderNodes(App.appState, App.cachedPositions);
+    if (Object.keys(App.cachedPositions).length) renderNodes(App.appState, App.cachedPositions, App.visiblePersonIds);
   };
 
   App.navigateWithArrow = function(e) {
@@ -458,7 +661,11 @@
         var rel = { person: s, type: 'sibling', pos: positions[s.id] };
         if (!relMap[s.id]) relMap[s.id] = rel;
       });
-      return Object.values(relMap).filter(function(r) { return r.pos; });
+      return Object.values(relMap).filter(function(r) {
+        if (!r.pos) return false;
+        if (!App.visiblePersonIds || !App.visiblePersonIds.size) return true;
+        return App.visiblePersonIds.has(r.person.id);
+      });
     };
 
     var relatives = getRelatives();
@@ -589,6 +796,53 @@
       siblingSpouses: siblingSpouses
     };
   }
+
+  function sortSiblingsByCurrentLayout(siblingIds) {
+    var isLR = App.appState.layout === 'left-right';
+    var axis = isLR ? 'y' : 'x';
+    return siblingIds.slice().sort(function(a, b) {
+      var pa = App.cachedPositions[a];
+      var pb = App.cachedPositions[b];
+      if (!pa || !pb) return 0;
+      if (pa[axis] !== pb[axis]) return pa[axis] - pb[axis];
+      var na = (App.appState.persons[a] && App.appState.persons[a].name) || a;
+      var nb = (App.appState.persons[b] && App.appState.persons[b].name) || b;
+      return na.localeCompare(nb);
+    });
+  }
+
+  function persistSiblingOrder(parentIds, orderedIds, actionLabel) {
+    App.history.execute(function(state) {
+      orderedIds.forEach(function(sid, idx) {
+        state.relations.forEach(function(r) {
+          if (r.type === 'parent-child' && r.toId === sid && parentIds.indexOf(r.fromId) !== -1) {
+            r.order = idx;
+          }
+        });
+      });
+    }, actionLabel || '调整兄弟顺序');
+  }
+
+  App.moveSiblingByStep = function(personId, step) {
+    if (!personId) return { ok: false, message: '请先选中一个节点' };
+    var info = getSiblingsByParent(personId, App.appState);
+    if (!info) return { ok: false, message: '当前节点没有可调整的兄弟顺序' };
+
+    var sorted = sortSiblingsByCurrentLayout(info.siblings);
+    var idx = sorted.indexOf(personId);
+    if (idx === -1) return { ok: false, message: '未找到排序位置' };
+
+    var targetIdx = idx + step;
+    if (targetIdx < 0 || targetIdx >= sorted.length) {
+      return { ok: false, message: step < 0 ? '已经在最左侧' : '已经在最右侧' };
+    }
+
+    var moved = sorted.slice();
+    var picked = moved.splice(idx, 1)[0];
+    moved.splice(targetIdx, 0, picked);
+    persistSiblingOrder(info.parentIds, moved, step < 0 ? '兄弟左移' : '兄弟右移');
+    return { ok: true, message: step < 0 ? '已左移一位' : '已右移一位' };
+  };
 
   // Alt+拖拽建立关系
   function initRelationDrag(e, fromPersonId) {
@@ -856,16 +1110,8 @@
       }
       newOrder.splice(insertIdx, 0, ds.personId);
 
-      App.history.execute(function(state) {
-        newOrder.forEach(function(sid, idx) {
-          // 同父母组统一顺序：只更新本组父母到该子女的关系，避免污染其他分支
-          state.relations.forEach(function(r) {
-            if (r.type === 'parent-child' && r.toId === sid && ds.parentIds.indexOf(r.fromId) !== -1) {
-              r.order = idx;
-            }
-          });
-        });
-      }, '调整兄弟顺序');
+      // 同父母组统一顺序：只更新本组父母到该子女的关系，避免污染其他分支
+      persistSiblingOrder(ds.parentIds, newOrder, '调整兄弟顺序');
     }
 
     window.addEventListener('mousemove', onMove);
@@ -890,13 +1136,26 @@
       if (isPanning){isPanning=false;document.getElementById('svg-canvas').classList.remove('grabbing');}
     });
     svg.addEventListener('wheel',function(e){
+      var active = document.activeElement;
+      var isTyping = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT');
+      if (isTyping) return;
       e.preventDefault();
+      if (e.shiftKey) {
+        // Shift + 滚轮：仅用于水平平移
+        var move = e.deltaY;
+        if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) move = e.deltaX;
+        App.vp.x -= move * 0.9;
+        App.applyViewport();
+        return;
+      }
+
       var rect=svg.getBoundingClientRect(),mx=e.clientX-rect.left,my=e.clientY-rect.top;
       var delta=e.deltaY>0?0.9:1.1;
       var newScale=Math.max(0.1,Math.min(4,App.vp.scale*delta));
       App.vp.x=mx-(mx-App.vp.x)*(newScale/App.vp.scale);
       App.vp.y=my-(my-App.vp.y)*(newScale/App.vp.scale);
-      App.vp.scale=newScale; App.applyViewport();
+      App.vp.scale=newScale;
+      App.applyViewport();
     },{passive:false});
     svg.addEventListener('click',function(e){
       if (!e.target.closest('[data-person-id]')){App.selectPerson(null);App.closeContextMenu();}

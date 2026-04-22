@@ -926,6 +926,12 @@ body.dragging {
   display: none;
 }
 
+.btn-inline {
+  padding: 7px 12px;
+  font-size: 12px;
+  line-height: 1;
+}
+
 /* ========================================
    按钮
    ======================================== */
@@ -1277,6 +1283,59 @@ body.dragging {
 
 #toast.show {
   opacity: 1;
+}
+
+#photo-viewer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 2200;
+  padding: 20px;
+}
+
+#photo-viewer-overlay.open {
+  display: flex;
+}
+
+#photo-viewer-panel {
+  position: relative;
+  max-width: min(92vw, 1400px);
+  max-height: 92vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#photo-viewer-image {
+  display: block;
+  max-width: 100%;
+  max-height: 92vh;
+  border-radius: 8px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.4);
+  background: #ffffff;
+}
+
+#photo-viewer-close {
+  position: absolute;
+  top: -14px;
+  right: -14px;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+  color: #222222;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+}
+
+#photo-viewer-close:hover {
+  background: #ffffff;
 }
 
 /* 自动保存提示 */
@@ -1634,7 +1693,8 @@ body.dragging {
   #ctx-menu,
   #modal-overlay,
   #toast,
-  #zoom-indicator {
+  #zoom-indicator,
+  #photo-viewer-overlay {
     display: none !important;
   }
 

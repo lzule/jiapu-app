@@ -5,6 +5,8 @@ KinCanvas is an offline-first web app for managing family trees visually, with m
 ## Table of Contents
 
 - [Overview](#overview)
+- [UI Preview](#ui-preview)
+- [Recent Updates](#recent-updates)
 - [Core Features](#core-features)
 - [Quick Start](#quick-start)
 - [Frequent Actions](#frequent-actions)
@@ -25,6 +27,20 @@ KinCanvas is an offline-first web app for managing family trees visually, with m
 - Includes layout/rendering improvements for larger family trees.
 - Supports full-tree vector and high-resolution image export.
 
+## UI Preview
+
+![Anonymous UI preview](./docs/images/preview-anonymous.svg)
+
+> This preview uses anonymized demo content only (no private family data).
+
+## Recent Updates
+
+- 2026-04-22: Added subtree collapse per node and one-click **Expand All**.
+- 2026-04-22: Search now auto-expands collapsed branches to reveal matched nodes.
+- 2026-04-22: Added `Shift + Wheel` horizontal panning on the canvas.
+- 2026-04-22: Added `Ctrl + Shift + ←/→` sibling order adjustment.
+- 2026-04-22: Added photo removal and full-screen photo preview (`Ctrl + mouse` quick zoom supported).
+
 ## Core Features
 
 - Member management: add, edit, delete.
@@ -34,8 +50,9 @@ KinCanvas is an offline-first web app for managing family trees visually, with m
   - `Alt + drag` from one node to another, then select relation type.
 - Layout and view:
   - Top-down / left-right layout toggle.
-  - Pan, zoom, fit-to-screen.
+  - Pan, zoom, `Shift + wheel` horizontal pan, fit-to-screen.
   - Sibling drag-and-drop ordering.
+  - Per-node subtree collapse and one-click expand-all.
 - Search and focus: search by name, notes, etc.
 - History: undo, redo, save/restore snapshots.
 - Export:
@@ -59,6 +76,9 @@ KinCanvas is an offline-first web app for managing family trees visually, with m
 - Right-click a node: open node actions menu.
 - `Alt + drag` between nodes: create relationship quickly.
 - Drag sibling nodes: reorder siblings.
+- Click the node collapse button: collapse/expand all descendants of that node.
+- Click **Expand All** in toolbar: restore full tree visibility.
+- Click a node photo: open full-screen preview (`Ctrl + mouse` quick zoom also works).
 
 ## Keyboard Shortcuts
 
@@ -76,6 +96,8 @@ KinCanvas is an offline-first web app for managing family trees visually, with m
 - `Ctrl + -`: Zoom out
 - `Ctrl + /`: Shortcut settings
 - `Ctrl + B`: Toggle sidebar
+- `Ctrl + Shift + ←`: Move selected node left within siblings
+- `Ctrl + Shift + →`: Move selected node right within siblings
 - `Esc`: Cancel/close
 - Arrow keys: Navigate between relatives
 
@@ -104,6 +126,7 @@ The **Export Image** action now exports both:
 
 - `familytree_YYYY-MM-DD.svg` (full-tree vector)
 - `familytree_YYYY-MM-DD_uhd.png` (full-tree high-resolution bitmap)
+- Export always uses the full tree even if some branches are currently collapsed on screen.
 
 JSON export is also available for backup/migration.
 

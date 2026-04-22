@@ -18,6 +18,7 @@
   <button class="tb-btn" id="btn-zoom-in">＋</button>
   <button class="tb-btn" id="btn-zoom-out">－</button>
   <button class="tb-btn" id="btn-zoom-fit">适应</button>
+  <button class="tb-btn" id="btn-expand-all" title="展开全部已折叠分支">展开全部</button>
   <div class="tb-sep"></div>
   <button class="tb-btn" id="btn-undo" title="撤销">↩ 撤销</button>
   <button class="tb-btn" id="btn-redo" title="前进">↪ 前进</button>
@@ -91,7 +92,7 @@
       <p>点击下方按钮添加第一位家族成员</p>
       <button id="add-root-btn">＋ 添加根节点</button>
       <p class="hint" style="margin-top:12px">右键节点可添加关系 · 拖拽平移 · 滚轮缩放</p>
-      <p class="hint">Ctrl+Z 撤销 · Ctrl+Y 重做 · Ctrl+S 保存版本 · Ctrl+Shift+N 添加人物</p>
+      <p class="hint">Shift+滚轮左右移动 · Ctrl+Shift+←/→ 调整同辈顺序</p>
     </div>
     <div id="zoom-indicator">100%</div>
 
@@ -164,6 +165,7 @@
         <div style="display:flex;align-items:center;gap:10px">
           <img id="photo-preview" class="photo-preview" src="" alt="照片">
           <input type="file" id="f-photo" accept="image/*" style="font-size:13px">
+          <button type="button" class="btn btn-secondary btn-inline" id="f-photo-remove" title="删除当前图片">删除图片</button>
         </div>
       </div>
     </div>
@@ -228,6 +230,13 @@
 </div>
 
 <div id="toast"></div>
+
+<div id="photo-viewer-overlay" aria-hidden="true">
+  <div id="photo-viewer-panel">
+    <button id="photo-viewer-close" aria-label="关闭图片预览">×</button>
+    <img id="photo-viewer-image" alt="人物大图预览">
+  </div>
+</div>
 
 <!-- 欢迎弹窗 -->
 <div id="welcome-overlay">
